@@ -1,0 +1,465 @@
+<meta charset="utf-8">
+<title>Mapa de Liquidação BTC</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;800&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: uma coluna de leitura; o mapa de calor ocupa a largura toda como peça central. */
+:root {
+  --bg: #f4f5f7;
+  --panel: #ffffff;
+  --fg: #10141b;
+  --muted: #5b6270;
+  --line: #dde1e8;
+  --accent: #2a78d6;
+  --heat-mid: #2a78d6;
+  --heat-hi: #0d366b;
+  --price: #10141b;
+  --hl: #d4561f;
+  --font-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --font-data: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d1015; --panel: #151a21; --fg: #eef1f5; --muted: #9aa3b2; --line: #283040;
+    --accent: #5598e7; --heat-mid: #2a78d6; --heat-hi: #cde2fb; --price: #ffffff; --hl: #e8743f;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d1015; --panel: #151a21; --fg: #eef1f5; --muted: #9aa3b2; --line: #283040;
+  --accent: #5598e7; --heat-mid: #2a78d6; --heat-hi: #cde2fb; --price: #ffffff; --hl: #e8743f;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg);
+  font: 15px/1.55 var(--font-body);
+  padding-inline: 16px; padding-block: 28px 56px;
+}
+.wrap { max-width: 1120px; margin: 0 auto; display: grid; gap: 40px; }
+.eyebrow {
+  font: 500 12px/1.4 var(--font-data); letter-spacing: .06em; text-transform: uppercase;
+  color: var(--muted);
+}
+h1 {
+  font: 800 clamp(30px, 5vw, 46px)/1.05 var(--font-display); letter-spacing: -.02em;
+  margin: 6px 0 10px; text-wrap: balance;
+}
+h2 { font: 600 21px/1.25 var(--font-display); margin: 0 0 6px; text-wrap: balance; }
+p { margin: 0; max-width: 68ch; }
+.muted { color: var(--muted); }
+.num { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+header { display: grid; gap: 4px; }
+
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1px;
+  background: var(--line); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.stat { background: var(--panel); padding: 14px 16px; display: grid; gap: 2px; min-width: 0; }
+.stat .k { font: 500 12px/1.3 var(--font-data); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.stat .v { font: 500 24px/1.2 var(--font-data); font-variant-numeric: tabular-nums; }
+.stat .s { font-size: 13px; color: var(--muted); }
+
+section { display: grid; gap: 14px; min-width: 0; }
+.figure { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 12px 12px 10px; position: relative; }
+#heat { display: block; width: 100%; height: 520px; cursor: crosshair; touch-action: pan-y; }
+@media (max-width: 640px) { #heat { height: 400px; } }
+.legend { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 24px; padding: 8px 4px 2px; font-size: 13px; color: var(--muted); }
+.ramp { display: flex; align-items: center; gap: 8px; }
+.ramp canvas { width: 160px; height: 10px; border-radius: 2px; border: 1px solid var(--line); }
+.pline { display: inline-block; width: 22px; height: 2px; background: var(--price); vertical-align: middle; margin-right: 6px; }
+.tip {
+  position: absolute; pointer-events: none; z-index: 2; min-width: 210px; max-width: 260px;
+  background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.18); padding: 10px 12px; font-size: 13px; line-height: 1.45;
+}
+.tip b { font-weight: 600; }
+.tip .row { display: flex; justify-content: space-between; gap: 12px; }
+.tip .row span:last-child { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+.tip .hit { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); }
+
+.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+.list { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; display: grid; gap: 10px; min-width: 0; }
+.list h3 { margin: 0; font: 600 14px/1.3 var(--font-display); }
+.bar { display: grid; grid-template-columns: 82px 1fr 64px 54px; align-items: center; gap: 10px; font-family: var(--font-data); font-size: 13px; font-variant-numeric: tabular-nums; }
+.bar .track { height: 10px; background: var(--line); border-radius: 0 4px 4px 0; overflow: hidden; }
+.bar .fill { height: 100%; background: var(--heat-mid); border-radius: 0 4px 4px 0; }
+.bar .d { color: var(--muted); text-align: right; }
+.bar .u { text-align: right; }
+
+.scroll { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+th, td { padding: 8px 12px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
+th:first-child, td:first-child { text-align: left; }
+th { font: 500 12px/1.3 var(--font-data); letter-spacing: .04em; text-transform: uppercase; color: var(--muted); background: var(--panel); position: sticky; top: 0; }
+td { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+td.lbl { font-family: var(--font-body); }
+tbody tr:last-child td { border-bottom: 0; }
+.pill { display: inline-block; padding: 1px 7px; border-radius: 99px; font-size: 12px; border: 1px solid var(--line); color: var(--muted); }
+.pill.hit { border-color: var(--accent); color: var(--fg); }
+.daily { max-height: 560px; }
+
+.ladder { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 10px 14px; overflow-x: auto; }
+.lrow { display: grid; grid-template-columns: 74px 52px minmax(120px, 1fr) 62px minmax(120px, 1fr) 58px; align-items: center; gap: 8px; min-height: 22px;
+  font-family: var(--font-data); font-size: 12.5px; font-variant-numeric: tabular-nums; min-width: 520px; }
+.lrow.head { color: var(--muted); font-size: 11.5px; letter-spacing: .04em; text-transform: uppercase; min-height: 26px; }
+.lrow .d, .lrow .v { color: var(--muted); text-align: right; }
+.lrow .tr { height: 10px; background: color-mix(in srgb, var(--line) 55%, transparent); border-radius: 0 3px 3px 0; overflow: hidden; }
+.lrow .tr span { display: block; height: 100%; border-radius: 0 3px 3px 0; }
+.lrow .m span { background: var(--heat-mid); }
+.lrow .r span { background: var(--hl); }
+.lrow.now { border-top: 2px solid var(--price); border-bottom: 2px solid var(--price); margin: 4px 0; font-weight: 500; }
+.lrow.now span.lbl { grid-column: 1 / -1; }
+.note { font-size: 13px; color: var(--muted); max-width: 80ch; }
+.swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: -1px; margin-right: 6px; }
+.findings { display: grid; gap: 12px; }
+.findings li { max-width: 72ch; }
+.findings ul { margin: 0; padding-left: 20px; display: grid; gap: 8px; }
+footer { font-size: 13px; color: var(--muted); display: grid; gap: 6px; border-top: 1px solid var(--line); padding-top: 18px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">BTCUSDT perpétuo · modelo de liquidação aproximado</div>
+    <h1>Mapa de Liquidação BTC</h1>
+    <p class="muted" id="sub"></p>
+  </header>
+
+  <div class="stats" id="stats"></div>
+
+  <section id="agora" hidden>
+    <div>
+      <h2>Agora: zonas perto do preço</h2>
+      <p class="muted" id="agoratxt"></p>
+    </div>
+    <div class="ladder" id="ladder"></div>
+    <div class="two">
+      <div class="list" id="hlup"><h3>Hyperliquid real · acima (shorts)</h3></div>
+      <div class="list" id="hldn"><h3>Hyperliquid real · abaixo (longs)</h3></div>
+    </div>
+    <p class="note" id="hlnote"></p>
+  </section>
+
+  <section>
+    <div>
+      <h2 id="heattitle">Como o mapa estava em cada hora</h2>
+      <p class="muted">Cada coluna é uma foto do mapa tirada no fechamento daquela hora, usando só dados conhecidos até ali. Quanto mais escuro, mais volume estimado de liquidação na faixa de US$ 500. Passe o mouse para ver a faixa e quando o preço chegou nela depois.</p>
+    </div>
+    <div class="figure">
+      <canvas id="heat" aria-label="Mapa de calor das zonas de liquidação ao longo do tempo, com a linha do preço"></canvas>
+      <div class="tip" id="tip" hidden></div>
+      <div class="legend">
+        <span><span class="pline"></span>preço de fechamento (Bybit)</span>
+        <span class="ramp"><span class="num">$0</span><canvas id="ramp" width="160" height="10"></canvas><span class="num" id="rampmax"></span><span>por faixa de $500</span></span>
+        <span>acima do preço = liquidação de shorts · abaixo = de longs</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div>
+      <h2>Foto mais recente</h2>
+      <p class="muted" id="curtxt"></p>
+    </div>
+    <div class="two">
+      <div class="list" id="listup"><h3>Acima do preço (shorts)</h3></div>
+      <div class="list" id="listdn"><h3>Abaixo do preço (longs)</h3></div>
+    </div>
+  </section>
+
+  <section>
+    <div>
+      <h2>O mapa prevê para onde o preço vai?</h2>
+      <p class="muted" id="bttxt"></p>
+    </div>
+    <div class="scroll"><table id="bt"></table></div>
+    <div class="findings">
+      <ul>
+        <li><b>A maior zona é quase sempre a do 10x, a ~9% do preço.</b> O 10x recebe 40% do volume em <span class="num">LEVERAGES</span>, então ele domina por construção. O "maior" reflete o chute de pesos, não o mercado.</li>
+        <li><b>A maior zona não é buscada mais do que um nível qualquer.</b> Em quase 5 anos, a taxa de toque em 24h da maior zona de cada lado ficou praticamente igual à de um nível aleatório à mesma distância, na calibração e no teste.</li>
+        <li><b>Quando a maior zona e o lado mais próximo discordam, o mais próximo vence quase sempre</b> (mais de 95% dos casos nas duas metades). O tamanho da zona não acrescenta nada à regra simples da distância.</li>
+        <li><b>As horas vizinhas não são independentes.</b> Fotos de horas seguidas são quase iguais, então as ~20 mil fotos de cada metade valem bem menos casos independentes. Com quase 5 anos, porém, o resultado já cobre altas, quedas e lateralizações.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <div>
+      <h2>Foto diária e quando o preço foi buscar</h2>
+      <p class="muted" id="dailytxt">Uma foto por dia, às 21h BRT. Para a maior faixa de cada lado, quanto tempo o preço levou para chegar nela depois da foto.</p>
+    </div>
+    <div class="scroll daily"><table id="daily"></table></div>
+  </section>
+
+  <footer>
+    <p>Modelo: a cada hora em que o open interest sobe, o volume novo vira zonas de liquidação de long abaixo e de short acima do fechamento, nas alavancagens 10x, 25x, 50x e 100x (pesos 40/30/20/10%). Zonas tocadas pelo preço somem; quedas de OI reduzem todas na mesma proporção. Os pesos e a margem de manutenção de 0,5% são suposições, não dados.</p>
+    <p>Fontes: APIs públicas da Binance, Bybit, OKX e Hyperliquid, e os arquivos diários públicos de OI da Binance (data.binance.vision) para o histórico desde 2022. A OKX só tem ~60 dias de OI. Cada corretora só entra na foto depois de 72h de histórico próprio. A Hyperliquid mostra posições reais das maiores contas do leaderboard, não o mercado todo. Nada aqui é recomendação de investimento.</p>
+  </footer>
+</div>
+
+<script>
+const D = /*DATA*/null;
+const H = 3600000;
+const fmtBRT = (ts, withYear) => {
+  const d = new Date(ts - 3 * H);
+  const p = n => String(n).padStart(2, "0");
+  return `${p(d.getUTCDate())}/${p(d.getUTCMonth() + 1)}${withYear ? "/" + d.getUTCFullYear() : ""} ${p(d.getUTCHours())}h`;
+};
+const usd = v => "$" + Math.round(v).toLocaleString("en-US");
+const mi = v => "$" + (v / 1e6).toLocaleString("en-US", { maximumFractionDigits: 0 }) + "M";
+const pc = (v, s) => (v == null ? "n/a" : (s && v > 0 ? "+" : "") + (v * 100).toFixed(1).replace(".", ",") + "%");
+const hrs = h => h == null ? "ainda não" : h < 48 ? `${h}h` : `${(h / 24).toFixed(1).replace(".", ",")} dias`;
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+// Horas até o preço tocar um nível depois da foto i (mesma regra do backtest)
+function touch(i, lvl) {
+  const up = lvl > D.c[i];
+  for (let j = i + 1; j < D.n; j++) if (up ? D.h[j] >= lvl : D.l[j] <= lvl) return j - i;
+  return null;
+}
+
+// ---------- Cabeçalho e números do topo ----------
+const dmy = ts => fmtBRT(ts, true).slice(0, 10);
+document.getElementById("sub").textContent =
+  `Mapa calculado hora a hora com o histórico desde ${dmy(D.hist0)}, cada foto usando só os dados disponíveis até aquela hora. O mapa de calor mostra os últimos ${D.dias} dias. Gerado em ${D.gen}.`;
+const cur = D.cur, A = D.agora;
+const fmtNow = ts => { const d = new Date(ts - 3 * H), p = n => String(n).padStart(2, "0"); return `${p(d.getUTCDate())}/${p(d.getUTCMonth() + 1)} ${p(d.getUTCHours())}h${p(d.getUTCMinutes())}`; };
+const m1 = v => v >= 1e8 ? mi(v) : "$" + (v / 1e6).toFixed(1).replace(".", ",") + "M";
+// Topo: a foto ao vivo (agora.py) quando existe; senão a última hora fechada
+const px = A ? A.price : cur.close;
+const biggest = list => list.reduce((a, b) => b[0] > a[0] ? b : a);
+const bigUp = A ? biggest(A.model.short) : cur.up[0];
+const bigDn = A ? biggest(A.model.long) : cur.dn[0];
+document.getElementById("stats").innerHTML = [
+  [A ? "Preço agora (Binance)" : "Preço na última hora fechada", usd(px), A ? `${fmtNow(A.ts)} BRT · Hyperliquid ${usd(A.mark)}` : fmtBRT(cur.ts) + " BRT · " + cur.live.join(" + ")],
+  ["Maior zona acima (modelo)", usd(bigUp[1]), `~${mi(bigUp[0])} · ${pc(bigUp[1] / px - 1, true)} do preço`],
+  ["Maior zona abaixo (modelo)", usd(bigDn[1]), `~${mi(bigDn[0])} · ${pc(bigDn[1] / px - 1, true)} do preço`],
+].map(([k, v, s]) => `<div class="stat"><span class="k">${k}</span><span class="v">${v}</span><span class="s">${s}</span></div>`).join("");
+
+// ---------- Agora: escada e Hyperliquid ----------
+if (A) {
+  document.getElementById("agora").hidden = false;
+  const I = A.hl_info;
+  document.getElementById("agoratxt").textContent =
+    `Foto de ${fmtNow(A.ts)} BRT, faixas de $${A.step} até ±${Math.round(A.near * 100)}% do preço. O modelo é uma estimativa feita com o OI (${A.desde.join("; ")}). A Hyperliquid são posições reais, com o preço de liquidação informado pela própria corretora. Cada coluna de barras tem escala própria.`;
+  const mmax = Math.max(1, ...A.ladder.map(r => r[1])), rmax = Math.max(1, ...A.ladder.map(r => r[2]));
+  let html = `<div class="lrow head"><span>Faixa</span><span class="d">Dist.</span><span><span class="swatch" style="background:var(--heat-mid)"></span>Modelo</span><span></span><span><span class="swatch" style="background:var(--hl)"></span>Hyperliquid real</span><span></span></div>`;
+  let marked = false;
+  for (const [lvl, m, r] of A.ladder) {
+    if (!marked && lvl < A.price) {
+      html += `<div class="lrow now"><span class="lbl">preço agora ${usd(A.price)}</span></div>`;
+      marked = true;
+    }
+    html += `<div class="lrow"><span>${usd(lvl)}</span><span class="d">${pc(lvl / A.price - 1, true)}</span>
+      <span class="tr m"><span style="width:${(m / mmax * 100).toFixed(1)}%"></span></span><span class="v">${m ? m1(m) : "—"}</span>
+      <span class="tr r"><span style="width:${(r / rmax * 100).toFixed(1)}%"></span></span><span class="v">${r ? m1(r) : "—"}</span></div>`;
+  }
+  document.getElementById("ladder").innerHTML = html;
+  const hlMax = Math.max(1, ...A.hl.short.map(z => z[0]), ...A.hl.long.map(z => z[0]));
+  for (const [id, list] of [["hlup", A.hl.short], ["hldn", A.hl.long]]) {
+    const el = document.getElementById(id);
+    list.forEach(([u, lvl]) => {
+      const row = document.createElement("div"); row.className = "bar";
+      row.innerHTML = `<span>${usd(lvl)}</span><span class="track"><span class="fill" style="display:block;background:var(--hl);width:${(u / hlMax * 100).toFixed(1)}%"></span></span><span class="u">~${m1(u)}</span><span class="d">${pc(lvl / A.price - 1, true)}</span>`;
+      el.appendChild(row);
+    });
+  }
+  const pct0 = x => Math.round(x * 100) + "%";
+  document.getElementById("hlnote").textContent =
+    `Cobertura da Hyperliquid: ${I.posicoes} posições de BTC nas ${I.top.toLocaleString("pt-BR")} maiores contas do leaderboard, somando ${pct0(I.longs / I.oi)} dos longs e ${pct0(I.shorts / I.oi)} dos shorts do OI (${Math.round(I.oi).toLocaleString("pt-BR")} BTC). ${Math.round(I.sem_liq).toLocaleString("pt-BR")} BTC estão em contas com colateral de sobra, sem preço de liquidação. Alavancagem mediana ${I.lev_mediana}x. O varejo muito alavancado, que forma as zonas mais próximas, fica quase todo de fora.`;
+}
+document.getElementById("heattitle").textContent = `Como o mapa estava em cada hora (últimos ${D.dias} dias)`;
+
+// ---------- Mapa de calor ----------
+const cv = document.getElementById("heat"), tip = document.getElementById("tip");
+const PAD = { l: 64, r: 8, t: 8, b: 26 };
+let vmax = 1, geo = null;
+{
+  const nz = D.grid.filter(v => v > 0).sort((a, b) => a - b);
+  vmax = nz[Math.floor(nz.length * 0.99)] || 1;
+  document.getElementById("rampmax").textContent = "≥" + mi(vmax * 1e5);
+}
+const hex = s => { const v = s.replace("#", ""); return [0, 2, 4].map(i => parseInt(v.slice(i, i + 2), 16)); };
+function palette() {
+  const lo = hex(css("--panel")), mid = hex(css("--heat-mid")), hi = hex(css("--heat-hi"));
+  const lut = [];
+  for (let k = 0; k < 256; k++) {
+    const t = k / 255, [a, b, u] = t < 0.5 ? [lo, mid, t * 2] : [mid, hi, (t - 0.5) * 2];
+    lut.push(a.map((x, i) => Math.round(x + (b[i] - x) * u)));
+  }
+  return lut;
+}
+function drawRamp(lut) {
+  const r = document.getElementById("ramp"), x = r.getContext("2d"), im = x.createImageData(160, 10);
+  for (let px = 0; px < 160; px++) for (let py = 0; py < 10; py++) {
+    const c = lut[Math.round(px / 159 * 255)], o = (py * 160 + px) * 4;
+    im.data[o] = c[0]; im.data[o + 1] = c[1]; im.data[o + 2] = c[2]; im.data[o + 3] = 255;
+  }
+  x.putImageData(im, 0, 0);
+}
+function draw() {
+  const dpr = window.devicePixelRatio || 1, W = cv.clientWidth, Hh = cv.clientHeight;
+  cv.width = Math.round(W * dpr); cv.height = Math.round(Hh * dpr);
+  const x = cv.getContext("2d"); x.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const lut = palette(); drawRamp(lut);
+  const pw = W - PAD.l - PAD.r, ph = Hh - PAD.t - PAD.b;
+  const ymin = D.ymin, ymax = D.ymin + D.nb * D.step;
+  const X = i => PAD.l + (i + 0.5) / D.n * pw, Y = p => PAD.t + (1 - (p - ymin) / (ymax - ymin)) * ph;
+  geo = { pw, ph, ymin, ymax, X, Y };
+  x.fillStyle = css("--panel"); x.fillRect(0, 0, W, Hh);
+
+  // Heat: uma coluna de pixels por vez, com o máximo das fotos que caem nela
+  const cols = Math.max(1, Math.round(pw * dpr)), rowsPx = Math.max(1, Math.round(ph * dpr));
+  const img = x.createImageData(cols, rowsPx);
+  for (let cx = 0; cx < cols; cx++) {
+    const i0 = Math.floor(cx / cols * D.n), i1 = Math.max(i0 + 1, Math.floor((cx + 1) / cols * D.n));
+    for (let ry = 0; ry < rowsPx; ry++) {
+      const b = Math.floor((1 - (ry + 0.5) / rowsPx) * D.nb);
+      let v = 0;
+      for (let i = i0; i < i1; i++) v = Math.max(v, D.grid[i * D.nb + b]);
+      const c = lut[Math.min(255, Math.round(Math.pow(Math.min(1, v / vmax), 0.8) * 255))], o = (ry * cols + cx) * 4;
+      img.data[o] = c[0]; img.data[o + 1] = c[1]; img.data[o + 2] = c[2]; img.data[o + 3] = 255;
+    }
+  }
+  const off = document.createElement("canvas"); off.width = cols; off.height = rowsPx;
+  off.getContext("2d").putImageData(img, 0, 0);
+  x.imageSmoothingEnabled = false;
+  x.drawImage(off, PAD.l, PAD.t, pw, ph);
+
+  // Eixos e grade
+  x.font = `12px ${css("--font-data")}`; x.fillStyle = css("--muted"); x.strokeStyle = css("--line"); x.lineWidth = 1;
+  x.textAlign = "right"; x.textBaseline = "middle";
+  const ystep = ph < 420 ? 10000 : 5000;
+  for (let p = Math.ceil(ymin / ystep) * ystep; p <= ymax; p += ystep) {
+    const y = Math.round(Y(p)) + .5;
+    x.globalAlpha = .45; x.beginPath(); x.moveTo(PAD.l, y); x.lineTo(PAD.l + pw, y); x.stroke(); x.globalAlpha = 1;
+    x.fillText("$" + (p / 1000) + "k", PAD.l - 8, y);
+  }
+  x.textAlign = "center"; x.textBaseline = "top";
+  const days = Math.max(7, Math.ceil(D.n / 24 / (pw / 90)));
+  for (let i = 0; i < D.n; i++) {
+    const ts = D.t0 + i * H;
+    if ((ts - 3 * H) % (24 * H) !== 0) continue;
+    const dayIdx = Math.round((ts - 3 * H) / (24 * H));
+    if (dayIdx % days) continue;
+    x.fillText(fmtBRT(ts).slice(0, 5), X(i), PAD.t + ph + 7);
+  }
+
+  // Marcos: entrada de corretoras e início do teste
+  x.setLineDash([3, 4]); x.strokeStyle = css("--muted"); x.textAlign = "left"; x.textBaseline = "top";
+  const marks = D.events.slice(1).map(([i, s], k) => {
+    const before = D.events[k][1].split(" + "), now = s.split(" + ");
+    const add = now.filter(x => !before.includes(x)), out = before.filter(x => !now.includes(x));
+    return [i, add.length ? add.join(" + ") + " entra" : out.join(" + ") + " sai"];
+  }).concat(D.split != null ? [[D.split, "início do teste"]] : []);
+  marks.forEach(([i, label], k) => {
+    const xx = Math.round(X(i)) + .5;
+    x.beginPath(); x.moveTo(xx, PAD.t); x.lineTo(xx, PAD.t + ph); x.stroke();
+    x.fillStyle = css("--panel"); const w = x.measureText(label).width;
+    x.fillRect(xx + 4, PAD.t + 6 + k * 18, w + 8, 16);
+    x.fillStyle = css("--fg"); x.fillText(label, xx + 8, PAD.t + 8 + k * 18);
+  });
+  x.setLineDash([]);
+
+  // Preço: halo na cor do painel para ler sobre o azul escuro
+  const path = () => { x.beginPath(); for (let i = 0; i < D.n; i++) i ? x.lineTo(X(i), Y(D.c[i])) : x.moveTo(X(i), Y(D.c[i])); };
+  x.lineJoin = "round";
+  path(); x.strokeStyle = css("--panel"); x.lineWidth = 4; x.stroke();
+  path(); x.strokeStyle = css("--price"); x.lineWidth = 1.6; x.stroke();
+  if (hover) drawHover(x);
+}
+let hover = null;
+function drawHover(x) {
+  const { X, Y } = geo, xx = Math.round(X(hover.i)) + .5;
+  x.strokeStyle = css("--fg"); x.globalAlpha = .5; x.lineWidth = 1;
+  x.beginPath(); x.moveTo(xx, PAD.t); x.lineTo(xx, PAD.t + geo.ph); x.stroke(); x.globalAlpha = 1;
+  const y0 = Y(hover.lvl + D.step / 2), y1 = Y(hover.lvl - D.step / 2);
+  x.strokeStyle = css("--accent"); x.lineWidth = 2;
+  x.strokeRect(PAD.l, y0, geo.pw, Math.max(2, y1 - y0));
+  if (hover.t != null) {
+    const tx = X(hover.i + hover.t);
+    x.fillStyle = css("--accent"); x.beginPath(); x.arc(tx, Y(hover.lvl), 5, 0, 7); x.fill();
+    x.strokeStyle = css("--panel"); x.lineWidth = 2; x.stroke();
+  }
+  x.fillStyle = css("--price"); x.beginPath(); x.arc(xx, Y(D.c[hover.i]), 4, 0, 7); x.fill();
+}
+function onMove(ev) {
+  const r = cv.getBoundingClientRect(), mx = ev.clientX - r.left, my = ev.clientY - r.top;
+  if (!geo || mx < PAD.l || mx > PAD.l + geo.pw || my < PAD.t || my > PAD.t + geo.ph) { leave(); return; }
+  const i = Math.min(D.n - 1, Math.floor((mx - PAD.l) / geo.pw * D.n));
+  const b = Math.min(D.nb - 1, Math.floor((1 - (my - PAD.t) / geo.ph) * D.nb));
+  const center = Math.round((D.ymin + (b + 0.5) * D.step) / D.step) * D.step;
+  const v = D.grid[i * D.nb + b] * 1e5, close = D.c[i], above = center > close;
+  const t = touch(i, center);
+  hover = { i, lvl: center, t };
+  tip.innerHTML = `
+    <div><b>${fmtBRT(D.t0 + i * H, true)} BRT</b></div>
+    <div class="row"><span>Preço</span><span>${usd(close)}</span></div>
+    <div class="row"><span>Faixa</span><span>${usd(center)} (${pc(center / close - 1, true)})</span></div>
+    <div class="row"><span>${above ? "Shorts" : "Longs"} a liquidar</span><span>${v ? "~" + mi(v) : "nada"}</span></div>
+    <div class="hit">${t == null ? "O preço ainda não chegou nessa faixa." : `O preço chegou nessa faixa <b>${hrs(t)}</b> depois, em ${fmtBRT(D.t0 + (i + t) * H)}.`}</div>`;
+  tip.hidden = false;
+  const fw = cv.parentElement.clientWidth, tw = tip.offsetWidth, th = tip.offsetHeight;
+  let left = mx + 24; if (left + tw > fw - 8) left = mx - tw - 16;
+  let top = my - th / 2; top = Math.max(8, Math.min(top, cv.clientHeight - th));
+  tip.style.left = Math.max(8, left) + "px"; tip.style.top = top + "px";
+  draw();
+}
+function leave() { if (hover) { hover = null; tip.hidden = true; draw(); } }
+cv.addEventListener("pointermove", onMove);
+cv.addEventListener("pointerdown", onMove);
+cv.addEventListener("pointerleave", leave);
+let rz; window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(draw, 80); });
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", draw);
+new MutationObserver(draw).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+draw();
+document.fonts && document.fonts.ready.then(draw);
+
+// ---------- Foto mais recente ----------
+document.getElementById("curtxt").textContent =
+  `${fmtBRT(cur.ts, true)} BRT, preço ${usd(cur.close)}. As cinco maiores faixas de cada lado, com todo o histórico acumulado de ${cur.live.join(", ")}.`;
+const allMax = Math.max(...cur.up.map(z => z[0]), ...cur.dn.map(z => z[0]));
+for (const [id, list] of [["listup", cur.up], ["listdn", cur.dn]]) {
+  const el = document.getElementById(id);
+  [...list].sort((a, b) => b[1] - a[1]).forEach(([u, lvl]) => {
+    const row = document.createElement("div"); row.className = "bar";
+    row.innerHTML = `<span>${usd(lvl)}</span><span class="track"><span class="fill" style="display:block;width:${(u / allMax * 100).toFixed(1)}%"></span></span><span class="u">~${mi(u)}</span><span class="d">${pc(lvl / cur.close - 1, true)}</span>`;
+    el.appendChild(row);
+  });
+}
+
+// ---------- Backtest ----------
+const C = D.cal, T = D.tst, dd = m => `${dmy(m.inicio)} a ${dmy(m.fim)}`;
+document.getElementById("bttxt").textContent =
+  `Em cada hora, pegamos a maior faixa acima e a maior abaixo e olhamos as ${D.horizon}h seguintes. A primeira metade (calibração) e a segunda (teste) aparecem separadas. Nenhum parâmetro foi ajustado: o modelo roda com os chutes originais.`;
+const rowsBT = [
+  ["Período", dd(C), dd(T)],
+  ["Fotos horárias", C.n.toLocaleString("pt-BR"), T.n.toLocaleString("pt-BR")],
+  ["Distância mediana da maior zona acima", pc(C.dist_acima, 1), pc(T.dist_acima, 1)],
+  ["Distância mediana da maior zona abaixo", pc(C.dist_abaixo, 1), pc(T.dist_abaixo, 1)],
+  [`Maior zona acima tocada em ${D.horizon}h`, pc(C.toque_acima), pc(T.toque_acima)],
+  ["  nível aleatório à mesma distância", pc(C.aleat_acima), pc(T.aleat_acima)],
+  [`Maior zona abaixo tocada em ${D.horizon}h`, pc(C.toque_abaixo), pc(T.toque_abaixo)],
+  ["  nível aleatório à mesma distância", pc(C.aleat_abaixo), pc(T.aleat_abaixo)],
+  [`Nenhum lado tocado em ${D.horizon}h`, pc(C.primeiro.nenhum), pc(T.primeiro.nenhum)],
+  ["Casos com um lado tocado primeiro", C.decididos, T.decididos],
+  ["  foi primeiro para o lado da maior zona", pc(C.maior), pc(T.maior)],
+  ["  foi primeiro para o lado mais próximo", pc(C.proximo), pc(T.proximo)],
+  ["Casos em que maior zona e lado mais próximo discordam", C.discordam, T.discordam],
+  ["  a maior zona venceu", pc(C.disc_maior), pc(T.disc_maior)],
+];
+document.getElementById("bt").innerHTML =
+  `<thead><tr><th></th><th>Calibração</th><th>Teste</th></tr></thead><tbody>` +
+  rowsBT.map(([k, a, b]) => `<tr><td class="lbl"${k.startsWith("  ") ? ' style="padding-left:28px;color:var(--muted)"' : ""}>${k.trim()}</td><td>${a}</td><td>${b}</td></tr>`).join("") + "</tbody>";
+
+// ---------- Tabela diária ----------
+const pill = h => `<span class="pill${h == null ? "" : " hit"}">${hrs(h)}</span>`;
+document.getElementById("dailytxt").textContent =
+  `Uma foto por dia, às 21h BRT, nos últimos ${D.dias} dias. Para a maior faixa de cada lado, quanto tempo o preço levou para chegar nela depois da foto.`;
+document.getElementById("daily").innerHTML =
+  `<thead><tr><th>Foto</th><th>Preço</th><th>Maior acima</th><th>Volume</th><th>Dist.</th><th>Buscou em</th><th>Maior abaixo</th><th>Volume</th><th>Dist.</th><th>Buscou em</th></tr></thead><tbody>` +
+  [...D.daily].reverse().map(r => `<tr><td>${fmtBRT(r.ts, true).replace(" ", " ")}</td><td>${usd(r.close)}</td>
+    <td>${usd(r.acima)}</td><td>~${mi(r.acima_usd)}</td><td>${pc(r.acima_dist, 1)}</td><td>${pill(r.h_acima)}</td>
+    <td>${usd(r.abaixo)}</td><td>~${mi(r.abaixo_usd)}</td><td>${pc(r.abaixo_dist, 1)}</td><td>${pill(r.h_abaixo)}</td></tr>`).join("") + "</tbody>";
+</script>

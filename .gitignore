@@ -1,0 +1,7 @@
+data/
+dataset/
+cenas/
+fonts/
+__pycache__/
+*.log
+*.pkl
